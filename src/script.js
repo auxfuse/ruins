@@ -15,21 +15,9 @@ import glyphFragmentShader from './shaders/glyph/fragment.glsl';
  * Base
  */
 // Debug
-const gui = new GUI({
-    width: 400
-})
-
-// bloom layer
-const BLOOM_SCENE = 1;
-
-const bloomLayer = new THREE.Layers();
-bloomLayer.set( BLOOM_SCENE );
-
-const darkMaterial = new THREE.MeshBasicMaterial({
-    color: 'black'
-});
-const materials = {};
-// const materials = [];
+// const gui = new GUI({
+//     width: 400
+// })
 
 // Canvas
 const canvas = document.querySelector('canvas.webgl')
@@ -55,7 +43,7 @@ gltfLoader.setDRACOLoader(dracoLoader)
  * Model
  */
 
-gltfLoader.load('ruins_noLights.glb', (gltf) => {
+const ruins = gltfLoader.load('ruins_noLights.glb', (gltf) => {
     console.log(gltf.scene);
     gltf.scene.traverse((child) => {
         if(child.isMesh) {
@@ -63,8 +51,12 @@ gltfLoader.load('ruins_noLights.glb', (gltf) => {
             child.receiveShadow = true;
 
             if(child.name !== 'glyph' || child.name !== 'glyph001') {
-                darkenNonBloom(child.material.uuid);
-            }
+                child.layers.set(2);
+            };
+
+            if(child.name === 'glyph' || child.name === 'glyph001' ) {
+                child.layers.set(1);
+            };
         }
     });
 
@@ -100,11 +92,13 @@ window.addEventListener('resize', () =>
  * Lights
  */
 const ambientLight = new THREE.AmbientLight(0x2900AC, 10);
+ambientLight.layers.set(2);
 scene.add(ambientLight);
 
 const hemisphereLight = new THREE.HemisphereLight(
     0xfefefe, 0x080800, 1
 );
+hemisphereLight.layers.set(2);
 scene.add(hemisphereLight);
 
 const pointLight = new THREE.PointLight(
@@ -116,6 +110,7 @@ pointLight.shadow.camera.near = 2;
 pointLight.shadow.camera.far = 6;
 pointLight.shadow.normalBias = 0.05;
 pointLight.shadow.bias = - 0.004;
+pointLight.layers.set(2);
 scene.add(pointLight);
 
 const directionalLight = new THREE.DirectionalLight(
@@ -129,11 +124,12 @@ directionalLight.shadow.normalBias = 0.05;
 directionalLight.shadow.bias = - 0.004;
 directionalLight.position.set(-5, 2, -5);
 directionalLight.target.updateWorldMatrix();
+directionalLight.layers.set(2);
 scene.add(directionalLight);
 
 const axisHelper = new THREE.AxesHelper();
 axisHelper.position.set(0, 2, 0);
-// scene.add(axisHelper);
+scene.add(axisHelper);
 
 /**
  * Camera
@@ -143,12 +139,7 @@ const camera = new THREE.PerspectiveCamera(45, sizes.width / sizes.height, 0.1, 
 camera.position.x = 4
 camera.position.y = 2
 camera.position.z = 4
-scene.add(camera)
-
-// Helpers
-// const directionalLightCameraHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
-// const pointLightCameraHelper = new THREE.CameraHelper(pointLight.shadow.camera);
-// scene.add(directionalLightCameraHelper, pointLightCameraHelper);
+scene.add(camera);
 
 // Controls
 const controls = new OrbitControls(camera, canvas)
@@ -177,7 +168,7 @@ const renderScene = new RenderPass( scene, camera );
 const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(
         sizes.width, sizes.height
-    ), 5, 5, 0.5
+    ), 0.2, 2, 0.001
 );
 const bloomComposer = new EffectComposer( renderer );
 bloomComposer.renderToScreen = false;
@@ -204,20 +195,6 @@ finalComposer.addPass( renderScene );
 finalComposer.addPass( mixPass );
 finalComposer.addPass( outputPass );
 
-function darkenNonBloom( obj ) {
-    if ( obj.isMesh && bloomLayer.test( obj.layers ) === false ) {
-        materials[ obj.uuid ] = obj.material;
-        obj.material = darkMaterial;
-    }
-};
-
-function restoreMaterial( obj ) {
-    if ( materials[ obj.uuid ] ) {
-        obj.material = materials[ obj.uuid ];
-        delete materials[ obj.uuid ];
-    }
-};
-
 /**
  * Animate
  */
@@ -227,19 +204,18 @@ const tick = () =>
 {
     const elapsedTime = clock.getElapsedTime();
 
-    // glyphLightMaterial.uniforms.uTime.value = elapsedTime;
-
     // Update controls
     controls.update()
 
     // Render
-    scene.traverse( darkenNonBloom );
-    // renderer.render(scene, camera);
+    renderer.clear();
+    renderer.clearDepth();
+
+    camera.layers.set(1);
     bloomComposer.render();
-    // composer.render();
-    scene.traverse( restoreMaterial );
+
+    camera.layers.set(2);
     finalComposer.render();
-    
 
     // Call tick again on the next frame
     window.requestAnimationFrame(tick)
